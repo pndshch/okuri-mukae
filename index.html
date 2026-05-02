@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>おくりむかえGO! - Lesson Pickup Express</title>
+<meta name="description" content="ミニバンで子どもを習い事に送り届けよう！3Dドライブゲーム">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #000; font-family: 'Helvetica Neue', 'Hiragino Sans', Arial, sans-serif; }
+canvas { display: block; }
+
+/* Loading Screen */
+#loading {
+    position: fixed; inset: 0;
+    background: linear-gradient(135deg, #1a1025 0%, #0d1117 100%);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 1000; color: #e6edf3;
+    transition: opacity 0.6s;
+}
+#loading.hidden { opacity: 0; pointer-events: none; }
+#loading h1 { font-size: 42px; margin-bottom: 8px; }
+#loading .subtitle { font-size: 16px; color: #a78bfa; margin-bottom: 30px; font-weight: 600; }
+#loading p { font-size: 13px; color: #8b949e; margin-bottom: 16px; }
+.progress-bar { width: 300px; height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #7c3aed, #a855f7); width: 0%; transition: width 0.3s; }
+
+/* HUD */
+#hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 14px 18px; z-index: 10; pointer-events: none;
+}
+.hud-box {
+    background: rgba(13,17,23,0.88); backdrop-filter: blur(12px);
+    border: 1px solid rgba(124,58,237,0.3); border-radius: 12px;
+    padding: 10px 16px; color: #e6edf3;
+    pointer-events: auto;
+}
+
+/* Mission panel - top left */
+#mission-panel {
+    max-width: 300px;
+}
+#mission-text {
+    font-size: 16px; font-weight: 700; line-height: 1.4;
+    color: #a855f7;
+}
+#mission-sub {
+    font-size: 12px; color: #8b949e; margin-top: 4px;
+}
+
+/* Stats - top center */
+#stats-panel {
+    text-align: center;
+}
+#round-display { font-size: 12px; color: #8b949e; }
+#timer-display {
+    font-size: 36px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: #e6edf3;
+    line-height: 1;
+}
+#timer-display.urgent { color: #ef4444; animation: pulse 0.5s ease-in-out infinite alternate; }
+@keyframes pulse { to { opacity: 0.5; } }
+#score-display { font-size: 14px; color: #a78bfa; font-weight: 600; }
+
+/* Speed - top right */
+#speed-panel { text-align: right; }
+#speed-val { font-size: 32px; font-weight: 800; color: #a855f7; line-height: 1; }
+#speed-unit { font-size: 11px; color: #8b949e; }
+
+/* Direction compass */
+#compass {
+    position: fixed; bottom: 100px; right: 20px;
+    width: 70px; height: 70px;
+    z-index: 10; pointer-events: none;
+}
+#compass canvas { width: 100%; height: 100%; }
+
+/* Message overlay */
+#message {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 30; text-align: center;
+    pointer-events: none; opacity: 0;
+    transition: opacity 0.3s;
+}
+#message.show { opacity: 1; }
+#message h2 {
+    font-size: 48px; color: #fff;
+    text-shadow: 0 0 30px rgba(124,58,237,0.8), 0 4px 20px rgba(0,0,0,0.5);
+    margin-bottom: 10px;
+}
+#message p { font-size: 20px; color: #a78bfa; }
+
+/* Game Over / Results */
+#results {
+    position: fixed; inset: 0;
+    background: rgba(13,17,23,0.95);
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 100; color: #e6edf3;
+}
+#results.show { display: flex; }
+#results h1 { font-size: 48px; margin-bottom: 10px; }
+#results .final-score { font-size: 72px; font-weight: 800; color: #a855f7; margin: 16px 0; }
+#results .breakdown { font-size: 16px; color: #8b949e; line-height: 2; text-align: center; margin-bottom: 30px; }
+#results .breakdown .success { color: #22c55e; }
+#results .breakdown .fail { color: #ef4444; }
+#restart-btn {
+    background: linear-gradient(135deg, #7c3aed, #a855f7);
+    border: none; border-radius: 12px;
+    padding: 14px 40px; color: #fff;
+    font-size: 18px; font-weight: 700; cursor: pointer;
+    transition: transform 0.15s;
+}
+#restart-btn:hover { transform: scale(1.05); }
+
+/* Crash flash */
+#crash-flash {
+    position: fixed; inset: 0;
+    background: rgba(230, 57, 70, 0.3);
+    pointer-events: none; z-index: 50;
+    opacity: 0; transition: opacity 0.08s;
+}
+#crash-flash.active { opacity: 1; }
+
+/* Touch controls */
+#touch-controls {
+    display: none;
+    position: fixed; bottom: 20px; z-index: 20;
+    width: 100%; padding: 0 16px;
+    justify-content: space-between; align-items: flex-end;
+}
+@media (max-width: 768px), (pointer: coarse) {
+    #touch-controls { display: flex; }
+    #compass { bottom: 180px; }
+}
+.touch-dpad {
+    display: grid;
+    grid-template-columns: 56px 56px 56px;
+    grid-template-rows: 56px 56px;
+    gap: 4px;
+}
+.touch-btn {
+    width: 56px; height: 56px;
+    background: rgba(124,58,237,0.25);
+    border: 2px solid rgba(124,58,237,0.4);
+    border-radius: 14px; color: #fff;
+    font-size: 22px; display: flex;
+    align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none; touch-action: none;
+}
+.touch-btn:active, .touch-btn.pressed { background: rgba(124,58,237,0.55); }
+.touch-gas {
+    width: 80px; height: 110px;
+    background: rgba(34,197,94,0.25);
+    border: 2px solid rgba(34,197,94,0.4);
+    border-radius: 14px; color: #fff;
+    font-size: 14px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none; touch-action: none;
+}
+.touch-brake {
+    width: 80px; height: 110px;
+    background: rgba(239,68,68,0.25);
+    border: 2px solid rgba(239,68,68,0.4);
+    border-radius: 14px; color: #fff;
+    font-size: 14px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none; touch-action: none;
+}
+
+/* Controls help */
+#controls-help {
+    position: fixed; bottom: 16px; left: 16px;
+    background: rgba(13,17,23,0.85); backdrop-filter: blur(10px);
+    border: 1px solid #30363d; border-radius: 10px;
+    padding: 10px 14px; color: #8b949e;
+    font-size: 11px; line-height: 1.8; z-index: 10;
+}
+#controls-help kbd {
+    background: #21262d; border: 1px solid #30363d;
+    border-radius: 4px; padding: 1px 5px; color: #e6edf3;
+    font-family: monospace; font-size: 10px;
+}
+@media (max-width: 768px), (pointer: coarse) {
+    #controls-help { display: none; }
+}
+
+/* Start screen */
+#start-screen {
+    position: fixed; inset: 0;
+    background: rgba(13,17,23,0.95);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 90; color: #e6edf3;
+}
+#start-screen.hidden { display: none; }
+#start-screen h1 { font-size: 52px; margin-bottom: 8px; }
+#start-screen .tagline { font-size: 18px; color: #a78bfa; margin-bottom: 40px; }
+#start-screen .rules {
+    font-size: 14px; color: #8b949e; line-height: 2;
+    text-align: center; margin-bottom: 30px;
+}
+#start-btn {
+    background: linear-gradient(135deg, #7c3aed, #a855f7);
+    border: none; border-radius: 14px;
+    padding: 16px 50px; color: #fff;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    transition: transform 0.15s;
+    animation: btnPulse 2s ease-in-out infinite;
+}
+#start-btn:hover { transform: scale(1.05); }
+@keyframes btnPulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(124,58,237,0.4); }
+    50% { box-shadow: 0 0 40px rgba(124,58,237,0.7); }
+}
+</style>
+</head>
+<body>
+
+<div id="loading">
+    <h1>🚐</h1>
+    <div class="subtitle">おくりむかえGO!</div>
+    <p>街を読み込み中...</p>
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+</div>
+
+<div id="start-screen" class="hidden">
+    <h1>おくりむかえGO!</h1>
+    <div class="tagline">Lesson Pickup Express</div>
+    <div class="rules">
+        ミニバンで子どもをお迎えして、習い事に送り届けよう！<br>
+        全5ラウンド ・ 各60秒の制限時間<br>
+        素早く届けるほど高スコア！<br><br>
+        <kbd style="background:#21262d;border:1px solid #30363d;border-radius:4px;padding:1px 5px;color:#e6edf3;font-family:monospace;font-size:11px;">WASD</kbd> /
+        <kbd style="background:#21262d;border:1px solid #30363d;border-radius:4px;padding:1px 5px;color:#e6edf3;font-family:monospace;font-size:11px;">矢印</kbd> で操作
+    </div>
+    <button id="start-btn">スタート!</button>
+</div>
+
+<div id="hud">
+    <div class="hud-box" id="mission-panel">
+        <div id="mission-text">準備中...</div>
+        <div id="mission-sub"></div>
+    </div>
+    <div class="hud-box" id="stats-panel">
+        <div id="round-display">ROUND 1 / 5</div>
+        <div id="timer-display">60</div>
+        <div id="score-display">SCORE: 0</div>
+    </div>
+    <div class="hud-box" id="speed-panel">
+        <div id="speed-val">0</div>
+        <div id="speed-unit">km/h</div>
+    </div>
+</div>
+
+<div id="compass"><canvas id="compass-canvas" width="140" height="140"></canvas></div>
+
+<div id="message"><h2 id="msg-title"></h2><p id="msg-sub"></p></div>
+
+<div id="results">
+    <h1>おつかれさま!</h1>
+    <div class="final-score" id="final-score">0</div>
+    <div>TOTAL SCORE</div>
+    <div class="breakdown" id="breakdown"></div>
+    <button id="restart-btn" onclick="location.reload()">もう一回!</button>
+</div>
+
+<div id="crash-flash"></div>
+
+<div id="controls-help">
+    <kbd>W</kbd> <kbd>↑</kbd> アクセル<br>
+    <kbd>S</kbd> <kbd>↓</kbd> ブレーキ / バック<br>
+    <kbd>A</kbd> <kbd>D</kbd> <kbd>←</kbd> <kbd>→</kbd> ステアリング<br>
+    <kbd>Space</kbd> ブレーキ<br>
+    <kbd>R</kbd> リセット
+</div>
+
+<div id="touch-controls">
+    <div class="touch-dpad">
+        <div></div>
+        <button class="touch-btn" id="btn-up">▲</button>
+        <div></div>
+        <button class="touch-btn" id="btn-left">◀</button>
+        <button class="touch-btn" id="btn-down">▼</button>
+        <button class="touch-btn" id="btn-right">▶</button>
+    </div>
+    <div style="display:flex; gap:10px; align-items:flex-end;">
+        <button class="touch-brake" id="btn-brake">BRAKE</button>
+        <button class="touch-gas" id="btn-gas">GO!</button>
+    </div>
+</div>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+    }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// ── Scene ──
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB);
+scene.fog = new THREE.FogExp2(0x87CEEB, 0.006);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.3;
+document.body.prepend(renderer.domElement);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
+
+// ── Lighting ──
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+const sunLight = new THREE.DirectionalLight(0xffeedd, 2.5);
+sunLight.position.set(40, 60, 30);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+sunLight.shadow.camera.left = -60;
+sunLight.shadow.camera.right = 60;
+sunLight.shadow.camera.top = 60;
+sunLight.shadow.camera.bottom = -60;
+sunLight.shadow.camera.near = 1;
+sunLight.shadow.camera.far = 150;
+scene.add(sunLight);
+
+scene.add(new THREE.HemisphereLight(0x87CEEB, 0x362d1e, 0.7));
+
+// ── Game data ──
+const MISSIONS = [
+    { venue: 'PianoSchool',  label: '🎹 ピアノ教室へ送ろう!',     emoji: '🎹', name: 'ピアノ' },
+    { venue: 'SwimSchool',   label: '🏊 スイミングスクールへ!',   emoji: '🏊', name: 'スイミング' },
+    { venue: 'Dojo',         label: '🧮 そろばん教室へ!',         emoji: '🧮', name: 'そろばん' },
+    { venue: 'CramSchool',   label: '📚 くもんへ送ろう!',         emoji: '📚', name: 'くもん' },
+    { venue: 'SoccerField',  label: '⚽ サッカー場へ!',           emoji: '⚽', name: 'サッカー' },
+];
+
+const VENUE_POSITIONS = {
+    PianoSchool:  new THREE.Vector3(-30, 0, 0),
+    SwimSchool:   new THREE.Vector3(30, 0, 0),
+    Dojo:         new THREE.Vector3(-30, 0, -25),
+    CramSchool:   new THREE.Vector3(30, 0, -25),
+    SoccerField:  new THREE.Vector3(0, 0, 40),
+};
+
+// Houses for random pickup locations (using door positions, z-shifted toward road)
+const HOUSE_POSITIONS = [];
+// Row 1: z ~ +12 (houses 0-11)
+for (let i = 0; i < 12; i++) {
+    const x = -45 + i * 8;
+    HOUSE_POSITIONS.push(new THREE.Vector3(x, 0, 8));
+}
+// Row 2: z ~ -11 (houses 12-23), doors face +z (toward road)
+for (let i = 0; i < 12; i++) {
+    const x = -45 + i * 8;
+    HOUSE_POSITIONS.push(new THREE.Vector3(x, 0, -6));
+}
+// Row 3: z ~ +37 (houses 24-35)
+for (let i = 0; i < 12; i++) {
+    const x = -45 + i * 8;
+    HOUSE_POSITIONS.push(new THREE.Vector3(x, 0, 33));
+}
+// Row 4: z ~ -37 (houses 36-47)
+for (let i = 0; i < 12; i++) {
+    const x = -45 + i * 8;
+    HOUSE_POSITIONS.push(new THREE.Vector3(x, 0, -32));
+}
+
+// ── Game state ──
+let gameStarted = false;
+let currentRound = 0;
+let phase = 'idle'; // 'pickup', 'deliver', 'success', 'fail', 'done'
+let missionTimer = 60;
+let totalScore = 0;
+let roundResults = [];
+let pickupPos = null;
+let deliverPos = null;
+let minivanObj = null;
+const PICKUP_RANGE = 6;
+const TIME_LIMIT = 60;
+
+// ── Car physics (city-drive style) ──
+let speed = 0;
+let steer = 0;
+let carAngle = 0;
+const maxSpeed = 0.8;
+const acceleration = 0.012;
+const brakeForce = 0.025;
+const friction = 0.003;
+const steerSpeed = 0.035;
+const steerReturn = 0.06;
+const maxSteer = 0.04;
+
+// ── Markers (glowing rings) ──
+const markerGroup = new THREE.Group();
+scene.add(markerGroup);
+
+function createMarker(color) {
+    const group = new THREE.Group();
+
+    // Ring
+    const ringGeo = new THREE.TorusGeometry(2.5, 0.15, 12, 48);
+    const ringMat = new THREE.MeshStandardMaterial({
+        color, emissive: color, emissiveIntensity: 2,
+        transparent: true, opacity: 0.85
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.3;
+    group.add(ring);
+
+    // Vertical beam
+    const beamGeo = new THREE.CylinderGeometry(0.1, 0.1, 12, 8);
+    const beamMat = new THREE.MeshStandardMaterial({
+        color, emissive: color, emissiveIntensity: 1.5,
+        transparent: true, opacity: 0.4
+    });
+    const beam = new THREE.Mesh(beamGeo, beamMat);
+    beam.position.y = 6;
+    group.add(beam);
+
+    // Floating sphere
+    const sphereGeo = new THREE.SphereGeometry(0.5, 16, 16);
+    const sphereMat = new THREE.MeshStandardMaterial({
+        color, emissive: color, emissiveIntensity: 3,
+        transparent: true, opacity: 0.9
+    });
+    const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+    sphere.position.y = 4;
+    group.add(sphere);
+    group.userData.sphere = sphere;
+    group.userData.ring = ring;
+
+    return group;
+}
+
+const pickupMarker = createMarker(0x22c55e); // green
+const deliverMarker = createMarker(0x7c3aed); // purple
+pickupMarker.visible = false;
+deliverMarker.visible = false;
+markerGroup.add(pickupMarker);
+markerGroup.add(deliverMarker);
+
+// ── Collision system ──
+const colliders = [];
+const crashFlash = document.getElementById('crash-flash');
+let crashTimer = 0;
+
+function buildColliders(obj) {
+    obj.traverse(child => {
+        if (!child.isMesh) return;
+        const name = child.name || '';
+        const isCollider = /^(House_|Roof_|Trunk_|PianoSchool$|SwimSchool$|Dojo$|CramSchool$|PianoSchool_Roof|SwimSchool_Roof|Dojo_Roof|CramSchool_Roof)/i.test(name);
+        if (!isCollider) return;
+
+        child.updateWorldMatrix(true, false);
+        const box = new THREE.Box3().setFromObject(child);
+        if (box.max.y - box.min.y < 0.3) return;
+
+        colliders.push({
+            minX: box.min.x, maxX: box.max.x,
+            minZ: box.min.z, maxZ: box.max.z,
+            height: box.max.y, name
+        });
+    });
+}
+
+function checkCollision(px, pz, halfW, halfD) {
+    for (const c of colliders) {
+        if (px + halfW > c.minX && px - halfW < c.maxX &&
+            pz + halfD > c.minZ && pz - halfD < c.maxZ) {
+            return c;
+        }
+    }
+    return null;
+}
+
+// ── Input ──
+const keys = {};
+window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// Touch
+const touchState = { up: false, down: false, left: false, right: false, gas: false, brake: false };
+function setupTouch(id, key) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const on = e => { e.preventDefault(); touchState[key] = true; btn.classList.add('pressed'); };
+    const off = e => { e.preventDefault(); touchState[key] = false; btn.classList.remove('pressed'); };
+    btn.addEventListener('touchstart', on, { passive: false });
+    btn.addEventListener('touchend', off, { passive: false });
+    btn.addEventListener('touchcancel', off, { passive: false });
+    // Also mouse for testing
+    btn.addEventListener('mousedown', on);
+    btn.addEventListener('mouseup', off);
+    btn.addEventListener('mouseleave', off);
+}
+setupTouch('btn-up', 'up');
+setupTouch('btn-down', 'down');
+setupTouch('btn-left', 'left');
+setupTouch('btn-right', 'right');
+setupTouch('btn-gas', 'gas');
+setupTouch('btn-brake', 'brake');
+
+// Reset key
+window.addEventListener('keydown', e => {
+    if (e.code === 'KeyR' && minivanObj) {
+        minivanObj.position.set(0, 0.8, 10);
+        carAngle = 0;
+        speed = 0;
+    }
+});
+
+// ── Compass ──
+const compassCanvas = document.getElementById('compass-canvas');
+const compassCtx = compassCanvas.getContext('2d');
+
+function drawCompass(targetPos) {
+    const w = 140, h = 140;
+    compassCtx.clearRect(0, 0, w, h);
+    if (!targetPos || !minivanObj) return;
+
+    const cx = w / 2, cy = h / 2, r = 55;
+
+    // Background circle
+    compassCtx.beginPath();
+    compassCtx.arc(cx, cy, r + 5, 0, Math.PI * 2);
+    compassCtx.fillStyle = 'rgba(13,17,23,0.8)';
+    compassCtx.fill();
+    compassCtx.strokeStyle = 'rgba(124,58,237,0.4)';
+    compassCtx.lineWidth = 2;
+    compassCtx.stroke();
+
+    // Calculate angle to target relative to car facing
+    const dx = targetPos.x - minivanObj.position.x;
+    const dz = targetPos.z - minivanObj.position.z;
+    const angleToTarget = Math.atan2(dx, dz);
+    const relAngle = angleToTarget - carAngle;
+
+    // Distance text
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    compassCtx.fillStyle = '#8b949e';
+    compassCtx.font = '12px sans-serif';
+    compassCtx.textAlign = 'center';
+    compassCtx.fillText(`${Math.round(dist)}m`, cx, cy + 4);
+
+    // Arrow
+    compassCtx.save();
+    compassCtx.translate(cx, cy);
+    compassCtx.rotate(-relAngle);
+
+    compassCtx.beginPath();
+    compassCtx.moveTo(0, -r + 10);
+    compassCtx.lineTo(-10, -r + 30);
+    compassCtx.lineTo(10, -r + 30);
+    compassCtx.closePath();
+    compassCtx.fillStyle = phase === 'pickup' ? '#22c55e' : '#a855f7';
+    compassCtx.fill();
+
+    compassCtx.restore();
+}
+
+// ── Message display ──
+function showMessage(title, sub, duration = 2000) {
+    const el = document.getElementById('message');
+    document.getElementById('msg-title').textContent = title;
+    document.getElementById('msg-sub').textContent = sub;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), duration);
+}
+
+// ── Mission logic ──
+function startRound(roundIdx) {
+    currentRound = roundIdx;
+    phase = 'pickup';
+    missionTimer = TIME_LIMIT;
+
+    const mission = MISSIONS[roundIdx];
+
+    // Random pickup house (avoid ones too close to venue)
+    const venuePos = VENUE_POSITIONS[mission.venue];
+    let attempts = 0;
+    let houseIdx;
+    do {
+        houseIdx = Math.floor(Math.random() * HOUSE_POSITIONS.length);
+        attempts++;
+    } while (HOUSE_POSITIONS[houseIdx].distanceTo(venuePos) < 15 && attempts < 50);
+
+    pickupPos = HOUSE_POSITIONS[houseIdx].clone();
+    deliverPos = venuePos.clone();
+
+    // Place markers
+    pickupMarker.position.copy(pickupPos);
+    pickupMarker.position.y = 0;
+    pickupMarker.visible = true;
+    deliverMarker.position.copy(deliverPos);
+    deliverMarker.position.y = 0;
+    deliverMarker.visible = false;
+
+    // Update UI
+    document.getElementById('mission-text').textContent = '🏠 お迎えに行こう!';
+    document.getElementById('mission-sub').textContent = `→ 次: ${mission.emoji} ${mission.name}`;
+    document.getElementById('round-display').textContent = `ROUND ${roundIdx + 1} / 5`;
+
+    showMessage(`ROUND ${roundIdx + 1}`, `${mission.emoji} ${mission.name}`, 2000);
+}
+
+function onPickup() {
+    phase = 'deliver';
+    pickupMarker.visible = false;
+    deliverMarker.visible = true;
+
+    const mission = MISSIONS[currentRound];
+    document.getElementById('mission-text').textContent = mission.label;
+    document.getElementById('mission-sub').textContent = '子どもを乗せた! 急いで届けよう!';
+
+    showMessage('乗車完了!', `${mission.emoji} ${mission.name}へ急げ!`, 1500);
+}
+
+function onDeliver() {
+    phase = 'success';
+    deliverMarker.visible = false;
+
+    const timeBonus = Math.max(0, Math.round(missionTimer * 10));
+    const roundScore = 500 + timeBonus;
+    totalScore += roundScore;
+
+    roundResults.push({ round: currentRound + 1, success: true, score: roundScore, time: TIME_LIMIT - missionTimer });
+
+    document.getElementById('score-display').textContent = `SCORE: ${totalScore}`;
+    document.getElementById('mission-text').textContent = '✅ 配達完了!';
+    document.getElementById('mission-sub').textContent = `+${roundScore}pts (時間ボーナス: ${timeBonus})`;
+
+    showMessage('配達成功!', `+${roundScore} pts`, 2500);
+
+    setTimeout(() => {
+        if (currentRound < 4) {
+            startRound(currentRound + 1);
+        } else {
+            endGame();
+        }
+    }, 3000);
+}
+
+function onTimeout() {
+    phase = 'fail';
+    pickupMarker.visible = false;
+    deliverMarker.visible = false;
+
+    roundResults.push({ round: currentRound + 1, success: false, score: 0, time: TIME_LIMIT });
+
+    document.getElementById('mission-text').textContent = '⏰ タイムアウト!';
+    document.getElementById('mission-sub').textContent = '';
+
+    showMessage('タイムアウト!', '次のラウンドへ...', 2500);
+
+    setTimeout(() => {
+        if (currentRound < 4) {
+            startRound(currentRound + 1);
+        } else {
+            endGame();
+        }
+    }, 3000);
+}
+
+function endGame() {
+    phase = 'done';
+    pickupMarker.visible = false;
+    deliverMarker.visible = false;
+
+    document.getElementById('final-score').textContent = totalScore;
+
+    let html = '';
+    for (const r of roundResults) {
+        const mission = MISSIONS[r.round - 1];
+        if (r.success) {
+            html += `<div class="success">${mission.emoji} Round ${r.round}: ${mission.name} - ${r.score}pts (${Math.round(r.time)}秒)</div>`;
+        } else {
+            html += `<div class="fail">${mission.emoji} Round ${r.round}: ${mission.name} - タイムアウト</div>`;
+        }
+    }
+    document.getElementById('breakdown').innerHTML = html;
+    document.getElementById('results').classList.add('show');
+}
+
+// ── Start button ──
+document.getElementById('start-btn').addEventListener('click', () => {
+    document.getElementById('start-screen').classList.add('hidden');
+    gameStarted = true;
+    startRound(0);
+});
+
+// ── Load scene ──
+const loader = new GLTFLoader();
+const progressEl = document.getElementById('progress');
+
+loader.load('scene.glb',
+    (gltf) => {
+        const sceneRoot = gltf.scene;
+        sceneRoot.traverse(child => {
+            if (child.isMesh) {
+                child.receiveShadow = true;
+                child.castShadow = true;
+            }
+            // Find the minivan
+            if (child.name === 'Minivan') {
+                minivanObj = child;
+            }
+        });
+        scene.add(sceneRoot);
+
+        // Build colliders
+        buildColliders(sceneRoot);
+        console.log(`Colliders: ${colliders.length}`);
+
+        // If minivan wasn't found as a named mesh, search parent
+        if (!minivanObj) {
+            sceneRoot.traverse(child => {
+                if (child.name === 'Minivan') {
+                    minivanObj = child;
+                }
+            });
+        }
+
+        // Fallback: create a box car if minivan not found
+        if (!minivanObj) {
+            console.warn('Minivan not found in GLB, creating fallback');
+            minivanObj = new THREE.Group();
+            const bodyGeo = new THREE.BoxGeometry(2, 1.5, 4);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x4488ff, metalness: 0.5, roughness: 0.3 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.2;
+            body.castShadow = true;
+            minivanObj.add(body);
+            minivanObj.position.set(0, 0.8, 10);
+            scene.add(minivanObj);
+        }
+
+        // Extract minivan from parent so we can control it directly
+        const worldPos = new THREE.Vector3();
+        minivanObj.getWorldPosition(worldPos);
+        const parent = minivanObj.parent;
+        if (parent && parent !== scene) {
+            parent.remove(minivanObj);
+            scene.add(minivanObj);
+            minivanObj.position.copy(worldPos);
+        }
+
+        console.log('Minivan at:', minivanObj.position);
+
+        // Hide loading, show start screen
+        setTimeout(() => {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+        }, 400);
+    },
+    (progress) => {
+        if (progress.total > 0) {
+            const pct = (progress.loaded / progress.total) * 100;
+            progressEl.style.width = pct + '%';
+        }
+    },
+    (error) => {
+        console.error('Failed to load scene:', error);
+        document.querySelector('#loading p').textContent = 'エラー: シーンの読み込みに失敗しました';
+    }
+);
+
+// ── Game loop ──
+const clock = new THREE.Clock();
+let elapsed = 0;
+
+function animate() {
+    requestAnimationFrame(animate);
+    const dt = clock.getDelta();
+    elapsed += dt;
+
+    if (!minivanObj) {
+        renderer.render(scene, camera);
+        return;
+    }
+
+    // ── Input ──
+    const fwd = keys['KeyW'] || keys['ArrowUp'] || touchState.up || touchState.gas;
+    const back = keys['KeyS'] || keys['ArrowDown'] || touchState.down;
+    const left = keys['KeyA'] || keys['ArrowLeft'] || touchState.left;
+    const right = keys['KeyD'] || keys['ArrowRight'] || touchState.right;
+    const brake = keys['Space'] || touchState.brake;
+
+    // ── Car physics ──
+    if (fwd) speed = Math.min(speed + acceleration, maxSpeed);
+    else if (back) speed = Math.max(speed - acceleration, -maxSpeed * 0.4);
+    else if (brake) {
+        speed *= 0.92;
+        if (Math.abs(speed) < 0.005) speed = 0;
+    } else {
+        if (speed > 0) speed = Math.max(0, speed - friction);
+        else if (speed < 0) speed = Math.min(0, speed + friction);
+    }
+
+    if (left) steer = Math.min(steer + steerSpeed, maxSteer);
+    else if (right) steer = Math.max(steer - steerSpeed, -maxSteer);
+    else {
+        if (steer > 0) steer = Math.max(0, steer - steerReturn);
+        else steer = Math.min(0, steer + steerReturn);
+    }
+
+    if (Math.abs(speed) > 0.01) {
+        carAngle += steer * (speed / maxSpeed);
+    }
+
+    const prevX = minivanObj.position.x;
+    const prevZ = minivanObj.position.z;
+    minivanObj.position.x -= Math.sin(carAngle) * speed;
+    minivanObj.position.z -= Math.cos(carAngle) * speed;
+
+    // Collision
+    const absS = Math.abs(Math.sin(carAngle));
+    const absC = Math.abs(Math.cos(carAngle));
+    const halfW = 1.0 * absC + 2.0 * absS + 0.2;
+    const halfD = 1.0 * absS + 2.0 * absC + 0.2;
+    const hit = checkCollision(minivanObj.position.x, minivanObj.position.z, halfW, halfD);
+    if (hit) {
+        minivanObj.position.x = prevX;
+        minivanObj.position.z = prevZ;
+        if (Math.abs(speed) > 0.05) {
+            crashFlash.classList.add('active');
+            crashTimer = 8;
+            camera.position.x += (Math.random() - 0.5) * 0.3;
+            camera.position.y += (Math.random() - 0.5) * 0.2;
+        }
+        speed *= -0.3;
+    }
+
+    minivanObj.rotation.y = carAngle;
+
+    // Bounds
+    const limit = 52;
+    minivanObj.position.x = Math.max(-limit, Math.min(limit, minivanObj.position.x));
+    minivanObj.position.z = Math.max(-limit, Math.min(limit, minivanObj.position.z));
+
+    // Crash flash fade
+    if (crashTimer > 0) {
+        crashTimer--;
+        if (crashTimer <= 0) crashFlash.classList.remove('active');
+    }
+
+    // ── Mission logic ──
+    if (gameStarted && (phase === 'pickup' || phase === 'deliver')) {
+        missionTimer -= dt;
+        if (missionTimer <= 0) {
+            missionTimer = 0;
+            onTimeout();
+        }
+
+        // Check pickup
+        if (phase === 'pickup' && pickupPos) {
+            const dPickup = new THREE.Vector2(
+                minivanObj.position.x - pickupPos.x,
+                minivanObj.position.z - pickupPos.z
+            ).length();
+            if (dPickup < PICKUP_RANGE) {
+                onPickup();
+            }
+        }
+
+        // Check delivery
+        if (phase === 'deliver' && deliverPos) {
+            const dDeliver = new THREE.Vector2(
+                minivanObj.position.x - deliverPos.x,
+                minivanObj.position.z - deliverPos.z
+            ).length();
+            if (dDeliver < PICKUP_RANGE) {
+                onDeliver();
+            }
+        }
+    }
+
+    // ── Animate markers ──
+    const t = elapsed;
+    if (pickupMarker.visible) {
+        pickupMarker.userData.sphere.position.y = 4 + Math.sin(t * 3) * 0.5;
+        pickupMarker.userData.ring.rotation.z = t * 0.5;
+        pickupMarker.userData.ring.scale.setScalar(1 + Math.sin(t * 2) * 0.1);
+    }
+    if (deliverMarker.visible) {
+        deliverMarker.userData.sphere.position.y = 4 + Math.sin(t * 3 + 1) * 0.5;
+        deliverMarker.userData.ring.rotation.z = t * 0.5;
+        deliverMarker.userData.ring.scale.setScalar(1 + Math.sin(t * 2 + 1) * 0.1);
+    }
+
+    // ── Camera: third-person chase ──
+    const camDist = 12;
+    const camHeight = 6;
+    const idealX = minivanObj.position.x + Math.sin(carAngle) * camDist;
+    const idealZ = minivanObj.position.z + Math.cos(carAngle) * camDist;
+    const idealY = minivanObj.position.y + camHeight;
+    camera.position.lerp(new THREE.Vector3(idealX, idealY, idealZ), 0.06);
+    camera.lookAt(minivanObj.position.x, minivanObj.position.y + 1.5, minivanObj.position.z);
+
+    // Move sun with car for shadows
+    sunLight.position.set(minivanObj.position.x + 40, 60, minivanObj.position.z + 30);
+    sunLight.target.position.copy(minivanObj.position);
+    sunLight.target.updateMatrixWorld();
+
+    // ── HUD updates ──
+    const kmh = Math.abs(speed) * 200;
+    document.getElementById('speed-val').textContent = Math.round(kmh);
+
+    if (gameStarted && (phase === 'pickup' || phase === 'deliver')) {
+        const timerEl = document.getElementById('timer-display');
+        timerEl.textContent = Math.ceil(missionTimer);
+        if (missionTimer < 15) {
+            timerEl.classList.add('urgent');
+        } else {
+            timerEl.classList.remove('urgent');
+        }
+    }
+
+    // ── Compass ──
+    if (phase === 'pickup' && pickupPos) {
+        drawCompass(pickupPos);
+    } else if (phase === 'deliver' && deliverPos) {
+        drawCompass(deliverPos);
+    } else {
+        compassCtx.clearRect(0, 0, 140, 140);
+    }
+
+    renderer.render(scene, camera);
+}
+animate();
+
+// ── Resize ──
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
