@@ -353,34 +353,35 @@ const MISSIONS = [
 ];
 
 const VENUE_POSITIONS = {
-    PianoSchool:  new THREE.Vector3(-30, 0, 0),
-    SwimSchool:   new THREE.Vector3(30, 0, 0),
-    Dojo:         new THREE.Vector3(-30, 0, -25),
-    CramSchool:   new THREE.Vector3(30, 0, -25),
-    SoccerField:  new THREE.Vector3(0, 0, 40),
+    PianoSchool:  new THREE.Vector3(-30, 0, -18),
+    SwimSchool:   new THREE.Vector3(30, 0, -18),
+    Dojo:         new THREE.Vector3(-30, 0, 18),
+    CramSchool:   new THREE.Vector3(30, 0, 18),
+    SoccerField:  new THREE.Vector3(0, 0, -42),
 };
 
-// Houses for random pickup locations (using door positions, z-shifted toward road)
+// Houses for random pickup locations (door positions, near road)
+// Blender Y→Three.js -Z: Row1 BY=8→Z=-6, Row2 BY=-8→Z=6, Row3 BY=33→Z=-31, Row4 BY=-33→Z=31
 const HOUSE_POSITIONS = [];
-// Row 1: z ~ +12 (houses 0-11)
+// Row 1: z ~ -6 (houses 0-11, doors face Z=0 road)
 for (let i = 0; i < 12; i++) {
-    const x = -45 + i * 8;
-    HOUSE_POSITIONS.push(new THREE.Vector3(x, 0, 8));
-}
-// Row 2: z ~ -11 (houses 12-23), doors face +z (toward road)
-for (let i = 0; i < 12; i++) {
-    const x = -45 + i * 8;
+    const x = -44 + i * 8;
     HOUSE_POSITIONS.push(new THREE.Vector3(x, 0, -6));
 }
-// Row 3: z ~ +37 (houses 24-35)
+// Row 2: z ~ +6 (houses 12-23, doors face Z=0 road)
 for (let i = 0; i < 12; i++) {
-    const x = -45 + i * 8;
-    HOUSE_POSITIONS.push(new THREE.Vector3(x, 0, 33));
+    const x = -44 + i * 8;
+    HOUSE_POSITIONS.push(new THREE.Vector3(x, 0, 6));
 }
-// Row 4: z ~ -37 (houses 36-47)
+// Row 3: z ~ -31 (houses 24-35, doors face Z=-25 road)
 for (let i = 0; i < 12; i++) {
-    const x = -45 + i * 8;
-    HOUSE_POSITIONS.push(new THREE.Vector3(x, 0, -32));
+    const x = -44 + i * 8;
+    HOUSE_POSITIONS.push(new THREE.Vector3(x, 0, -31));
+}
+// Row 4: z ~ +31 (houses 36-47, doors face Z=25 road)
+for (let i = 0; i < 12; i++) {
+    const x = -44 + i * 8;
+    HOUSE_POSITIONS.push(new THREE.Vector3(x, 0, 31));
 }
 
 // ── Game state ──
@@ -396,17 +397,17 @@ let minivanObj = null;
 const PICKUP_RANGE = 6;
 const TIME_LIMIT = 60;
 
-// ── Car physics (city-drive style) ──
+// ── Car physics (city-drive style - tuned for playability) ──
 let speed = 0;
 let steer = 0;
 let carAngle = 0;
-const maxSpeed = 1.0;
-const acceleration = 0.045;
-const brakeForce = 0.06;
-const friction = 0.005;
-const steerSpeed = 0.04;
-const steerReturn = 0.07;
-const maxSteer = 0.045;
+const maxSpeed = 0.55;
+const acceleration = 0.025;
+const brakeForce = 0.04;
+const friction = 0.004;
+const steerSpeed = 0.035;
+const steerReturn = 0.06;
+const maxSteer = 0.04;
 
 // ── Markers (glowing rings) ──
 const markerGroup = new THREE.Group();
@@ -928,7 +929,7 @@ function animate() {
     sunLight.target.updateMatrixWorld();
 
     // ── HUD updates ──
-    const kmh = Math.abs(speed) * 200;
+    const kmh = Math.abs(speed) * 120;
     document.getElementById('speed-val').textContent = Math.round(kmh);
 
     if (gameStarted && (phase === 'pickup' || phase === 'deliver')) {
