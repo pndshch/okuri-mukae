@@ -400,13 +400,13 @@ const TIME_LIMIT = 60;
 let speed = 0;
 let steer = 0;
 let carAngle = 0;
-const maxSpeed = 0.8;
-const acceleration = 0.012;
-const brakeForce = 0.025;
-const friction = 0.003;
-const steerSpeed = 0.035;
-const steerReturn = 0.06;
-const maxSteer = 0.04;
+const maxSpeed = 1.0;
+const acceleration = 0.045;
+const brakeForce = 0.06;
+const friction = 0.005;
+const steerSpeed = 0.04;
+const steerReturn = 0.07;
+const maxSteer = 0.045;
 
 // ── Markers (glowing rings) ──
 const markerGroup = new THREE.Group();
@@ -841,15 +841,19 @@ function animate() {
     const halfD = 1.0 * absS + 2.0 * absC + 0.2;
     const hit = checkCollision(minivanObj.position.x, minivanObj.position.z, halfW, halfD);
     if (hit) {
-        minivanObj.position.x = prevX;
-        minivanObj.position.z = prevZ;
-        if (Math.abs(speed) > 0.05) {
-            crashFlash.classList.add('active');
-            crashTimer = 8;
-            camera.position.x += (Math.random() - 0.5) * 0.3;
-            camera.position.y += (Math.random() - 0.5) * 0.2;
+        // Only block if previous position was NOT already in a collider (prevents stuck-in-collider)
+        const prevHit = checkCollision(prevX, prevZ, halfW, halfD);
+        if (!prevHit) {
+            minivanObj.position.x = prevX;
+            minivanObj.position.z = prevZ;
+            if (Math.abs(speed) > 0.05) {
+                crashFlash.classList.add('active');
+                crashTimer = 8;
+                camera.position.x += (Math.random() - 0.5) * 0.3;
+                camera.position.y += (Math.random() - 0.5) * 0.2;
+            }
+            speed *= -0.3;
         }
-        speed *= -0.3;
     }
 
     minivanObj.rotation.y = carAngle;
